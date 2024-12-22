@@ -114,3 +114,58 @@ void updateTempReadings(void) {
 void calcAvgTemp(void) {
 	avg_temp_reading = (temp_readings[0] + temp_readings[1] + temp_readings[2]) / 3;
 }
+void Timer2_Init(unsigned long period){ 
+  unsigned long volatile delay;
+  SYSCTL_RCGCTIMER_R |= 0x04;   // 0) activate timer2
+  delay = SYSCTL_RCGCTIMER_R;
+  timerCount = 0;
+  checkTempFlag = 0;
+  TIMER2_CTL_R = 0x00000000;    // 1) disable timer2A during setup
+  TIMER2_CFG_R = 0x00000000;    // 2) configure for 32-bit mode
+  TIMER2_TAMR_R |= (1 << 1);   // 3) configure for periodic mode, default down-count settings
+  TIMER2_TAILR_R = period-1;    // 4) reload value
+  TIMER2_TAPR_R = 0;            // 5) bus clock resolution
+  TIMER2_ICR_R |= (1 << 0);    // 6) clear timer2A timeout flag
+  TIMER2_IMR_R |= (1 << 0);    // 7) arm timeout interrupt
+  NVIC_EN0_R |= 1 << 23;           // 8) vector number 39, enable IRQ 23 in NVIC
+  TIMER2_CTL_R |= (1 << 0);    // 9) enable timer2A
+}
+
+void PortB_Init(void) {
+	volatile unsigned long delay;
+	SYSCTL_RCGC2_R |= (1<<1);      // 1) B clock
+  delay = SYSCTL_RCGC2_R;           // delay   
+  GPIO_PORTB_LOCK_R = 0x4C4F434B;   // 2) unlock PortB  
+  GPIO_PORTB_CR_R |= (1 << 2 | 1 << 3 | 1 << 4 | 1 << 5);           // allow changes to PB2-5       
+  GPIO_PORTB_AMSEL_R &= ~(1 << 2 | 1 << 3 | 1 << 4 | 1 << 5);        // 3) disable analog function
+  GPIO_PORTB_PCTL_R = 0x00000000;   // 4) GPIO clear bit PCTL  
+  GPIO_PORTB_DIR_R |= (1 << 2 | 1 << 3);      // 5) PB2, PB3 => OUTPUT LED
+	GPIO_PORTB_DIR_R &= ~(1 << 4 | 1 << 5);			// 6) PB4, PB5 => INPUT SWITCHES
+  GPIO_PORTB_AFSEL_R = 0x00;        // 6) no alternate function
+  GPIO_PORTB_PUR_R |= (1 << 4 | 1 << 5);          // enable pullup resistors on PF4,PF0       
+  GPIO_PORTB_DEN_R |= (1 << 2 | 1 << 3 | 1 << 4 | 1 << 5);          // 7) enable digital pins PF4-PF0 
+	
+  GPIO_PORTB_IM_R |= (1 << 4 | 1 << 5); // 8) enable interrupt on PB4-5
+	GPIO_PORTB_IBE_R &= ~(1 << 4 | 1 << 5); // 9) disable both edges on PB4-5
+	GPIO_PORTB_IEV_R &= ~(1 << 4 | 1 << 5); // 10) trigger on falling edges for PB4-5
+	NVIC_EN0_R|=(1<<1); // 11) vector number 17, enable IRQ 1 in NVIC
+}
+
+// Configure PE3
+void PortE_Init(void) {
+	SYSCTL_RCGCGPIO_R |= (1 << 4);      /* enable clock to GPIO_PORTE */
+	SYSCTL_RCGCADC_R |= (1 << 0);          /* enable clock to ADC0 */
+	GPIO_PORTE_AFSEL_R |= (1 << 3);        /* enable alternate function */
+	GPIO_PORTE_DEN_R &= ~(1 << 3);         /* disable digital function */
+	GPIO_PORTE_AMSEL_R |= (1 << 3);        /* enable analog function */
+	ADC0_ACTSS_R &= ~(1 << 3);             /* disable SS3 during configuration */
+	ADC0_EMUX_R &= ~0xF000;         /* software trigger conversion */
+	ADC0_SSMUX3_R = 0;              /* get input from channel 0 */
+	ADC0_SSCTL3_R |= (1 << 1 | 1 << 2);             /* take one sample at a time, set flag at 1st sample */
+	ADC0_ACTSS_R |= (1 << 3);              /* enable ADC0 sequencer 3 */
+}
+void Timer2A_Handler(void){ 
+  TIMER2_ICR_R |= (1 << 0);   // acknowledge timer2A timeout
+  timerCount++;
+  checkTempFlag = 1;
+}
