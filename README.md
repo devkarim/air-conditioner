@@ -7,6 +7,7 @@ An air conditioning system built using the TM4C123GH6PM microcontroller. The pro
 - University: Benha University
 - College: Shoubra Faculty of Engineering
 - Department: Computer Engineering
+- Course: Embedded Systems
 - Instructor: Mahmoud Nawar
 
 You can check the demo video from [here](https://www.youtube.com/watch?v=N25PDt8RJDY).
