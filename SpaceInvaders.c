@@ -41,6 +41,7 @@
 #include "Nokia5110.h"
 #include "Random.h"
 #include "TExaS.h"
+#include "UART.c"
 
 void DisableInterrupts(void); // Disable interrupts
 void WaitForInterrupt(void);   
@@ -74,13 +75,68 @@ void getTemperature(void) {
 }
 
 int main(void){
+	
   TExaS_Init(SSI0_Real_Nokia5110_Scope);  // set system clock to 80 MHz
-  Random_Init(1);
-  Nokia5110_Init();
-  Nokia5110_ClearBuffer();
-	Nokia5110_DisplayBuffer();      // draw buffer
-
+	UART_Init(); 
+	PortB_Init();
+	PortE_Init();
+	Nokia5110_Init();
+	Nokia5110_ClearBuffer();
+	Nokia5110_DisplayBuffer();
+	Timer2_Init(CHECK_TIMER);
+	
+	Nokia5110_Clear();
+	
+	getTemperature();
+	temp_readings[0] = temp;
+	temp_readings[1] = temp;
+	temp_readings[2] = temp;
+	calcAvgTemp();
+	
+	updateDisplay();
+	
   while(1){
+		if (increaseTempFlag == 1) {
+			increaseTempFlag = 0;
+			target++;
+			updateDisplay();
+		} else if (decreaseTempFlag == 1) {
+			decreaseTempFlag = 0;
+			target--;
+			updateDisplay();
+		}
+		
+		if (checkTempFlag) {
+			checkTempFlag = 0;
+			getTemperature();
+			updateTempReadings();
+			GPIO_PORTB_DATA_R &= ~(1 << 2 | 1 << 3);
+			UART_OutString("\n\n");
+			if (avg_temp_reading + THRESHOLD_TEMP >= target && avg_temp_reading - THRESHOLD_TEMP <= target) {
+				UART_OutString("TURNED OFF");
+				currentMode = 0;
+				updateDisplay();
+				OutCRLF();
+			} else if (avg_temp_reading > target) {
+				GPIO_PORTB_DATA_R |= (1 << 2);
+				UART_OutString("COOLING");
+				currentMode = 1;
+				updateDisplay();
+				OutCRLF();
+			} else if (avg_temp_reading < target) {
+				GPIO_PORTB_DATA_R |= (1 << 3);
+				UART_OutString("HEATING");
+				currentMode = 2;
+				updateDisplay();
+				OutCRLF();
+			}
+			UART_OutString("the average ambient temperature : ");
+			UART_OutUDec(avg_temp_reading);  
+			OutCRLF();
+			UART_OutString("the target temperature : ");
+			UART_OutUDec(target);		
+			OutCRLF();
+		}
   }
 
 }
@@ -105,7 +161,19 @@ void updateDisplay(void) {
 		Nokia5110_OutString("Heating");
 	}
 }
-
+void OutCRLF(void){
+  UART_OutChar(CR);
+  UART_OutChar(LF);
+}
+void GPIOPortB_Handler(void) {
+	if(GPIO_PORTB_RIS_R&(1 << 4)) {
+		GPIO_PORTB_ICR_R |=(1 << 4); //acknolagement interrupt in port B for pin 4
+		increaseTempFlag = 1;
+	} else if(GPIO_PORTB_RIS_R & (1 << 5)) {
+		GPIO_PORTB_ICR_R |= (1 << 5); //acknolagement interrupt in port B for pin 5
+		decreaseTempFlag = 1;
+	}
+}
 void updateTempReadings(void) {
 	temp_readings[timerCount % 3] = temp;
 	calcAvgTemp();
