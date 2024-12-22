@@ -66,6 +66,13 @@ short target = 30; // Target temperature
 short currentMode = 0; // Current mode, 0 = "Turned OFF", 1 = "Cooling" and 2 = "Heating"
 short temp_readings[3] = {0, 0, 0};
 
+void getTemperature(void) {
+	ADC0_PSSI_R |= 8;           /* start a conversion sequence 3 */
+	while((ADC0_RIS_R & 0x08) == 0); /* wait for conversion to complete */
+	temp = ((ADC0_SSFIFO3_R * 330) / 4096);
+	ADC0_ISC_R = 8;             /* clear completion flag  */
+}
+
 int main(void){
   TExaS_Init(SSI0_Real_Nokia5110_Scope);  // set system clock to 80 MHz
   Random_Init(1);
