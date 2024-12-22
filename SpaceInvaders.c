@@ -68,10 +68,10 @@ short currentMode = 0; // Current mode, 0 = "Turned OFF", 1 = "Cooling" and 2 = 
 short temp_readings[3] = {0, 0, 0};
 
 void getTemperature(void) {
-	ADC0_PSSI_R |= 8;           /* start a conversion sequence 3 */
+	ADC0_PSSI_R |= (1 << 3);           /* start a conversion sequence 3 */
 	while((ADC0_RIS_R & 0x08) == 0); /* wait for conversion to complete */
 	temp = ((ADC0_SSFIFO3_R * 330) / 4096);
-	ADC0_ISC_R = 8;             /* clear completion flag  */
+	ADC0_ISC_R |= (1 << 3);             /* clear completion flag  */
 }
 
 int main(void){
@@ -228,8 +228,8 @@ void PortE_Init(void) {
 	GPIO_PORTE_AMSEL_R |= (1 << 3);        /* enable analog function */
 	ADC0_ACTSS_R &= ~(1 << 3);             /* disable SS3 during configuration */
 	ADC0_EMUX_R &= ~0xF000;         /* software trigger conversion */
-	ADC0_SSMUX3_R = 0;              /* get input from channel 0 */
-	ADC0_SSCTL3_R |= (1 << 1 | 1 << 2);             /* take one sample at a time, set flag at 1st sample */
+	ADC0_SSMUX3_R = 0;              /* get input from channel 0, AIN0 (PE3) */
+	ADC0_SSCTL3_R |= (1 << 1 | 1 << 2);             /* end bit must be set and enable interrupt for simple sequencer 3 */
 	ADC0_ACTSS_R |= (1 << 3);              /* enable ADC0 sequencer 3 */
 }
 void Timer2A_Handler(void){ 
