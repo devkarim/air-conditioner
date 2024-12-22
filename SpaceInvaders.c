@@ -89,8 +89,7 @@ void Timer2_Init(unsigned long period){
   unsigned long volatile delay;
   SYSCTL_RCGCTIMER_R |= 0x04;   // 0) activate timer2
   delay = SYSCTL_RCGCTIMER_R;
-  TimerCount = 0;
-  Semaphore = 0;
+  timerCount = 0;
   TIMER2_CTL_R = 0x00000000;    // 1) disable timer2A during setup
   TIMER2_CFG_R = 0x00000000;    // 2) configure for 32-bit mode
   TIMER2_TAMR_R = 0x00000002;   // 3) configure for periodic mode, default down-count settings
@@ -107,6 +106,35 @@ void Timer2_Init(unsigned long period){
 
 void Timer2A_Handler(void){ 
   TIMER2_ICR_R = 0x00000001;   // acknowledge timer2A timeout
-  TimerCount++;
-  Semaphore = 1; // trigger
+  timerCount++;
+}
+
+void updateDisplay(void) {
+	char buffer[10];
+	char *str = " C";
+	
+	Nokia5110_Clear();
+	Nokia5110_SetCursor(0, 0);
+  Nokia5110_OutString("Target temp: ");
+	Nokia5110_SetCursor(3, 2);
+	
+	sprintf(buffer, "%d%s", target, str);
+	Nokia5110_OutString(buffer);
+	Nokia5110_SetCursor(2, 4);
+	if (currentMode == 0) {
+		Nokia5110_OutString("Turned OFF");
+	} else if (currentMode == 1) {
+		Nokia5110_OutString("Cooling");
+	} else if (currentMode == 2) {
+		Nokia5110_OutString("Heating");
+	}
+}
+
+void updateTempReadings(void) {
+	temp_readings[timerCount % 3] = temp;
+	calcAvgTemp();
+}
+
+void calcAvgTemp(void) {
+	avg_temp_reading = (temp_readings[0] + temp_readings[1] + temp_readings[2]) / 3;
 }
