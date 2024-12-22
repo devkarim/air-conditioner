@@ -4,7 +4,7 @@
 /* 
 	The provided code implements a basic temperature control system using the TM4C123GH6PM microcontroller. 
 	The system reads the ambient temperature, allows the user to set a target temperature, and controls heating or cooling devices to maintain the desired temperature. 
-	It also displays the current status on a Nokia5110 LCD and communicates over UART.
+	It also displays the current mode on a Nokia 5110 LCD and communicates over UART.
 
 	Team Members:
 		1. Fady Youssef
@@ -44,42 +44,39 @@
 #include "UART.c"
 
 void DisableInterrupts(void); // Disable interrupts
-void WaitForInterrupt(void);   
 void EnableInterrupts(void);  // Enable interrupts
 void Timer2_Init(unsigned long period); //Initialization of timer
 void PortB_Init(void);	//Initialization of Port B
 void PortE_Init(void); //Initialization of Port E
-void getTemperature(void);
-void OutCRLF(void);
-void updateDisplay(void);
-void calcAvgTemp(void);
-void updateTempReadings(void);
+void ADC_Init(void); // Initialization of ADC0, SS3, AIN0 (PE3)
+void initializeTemperature(void); // Initialization of temperature readings
+void getTemperature(void); // Read the ambient temperature from the sensor
+void OutCRLF(void); // Insert new line in UART
+void updateDisplay(void); // Update Nokia 5110 display with new information
+void calcAvgTemp(void); // Calculate the average temperature
+void updateTempReadings(void); // Add latest temperature reading to temperature readings array
 
-unsigned long timerCount;
-unsigned int checkTempFlag;
-const short THRESHOLD_TEMP = 1;
-const int CHECK_TIMER = 80000000 * 5; //5 seconds before checking the state of the device(80MHZ for 1 second)
+const short THRESHOLD_TEMP = 1; // Used for checking if target temperature is within -threshold and +threshold
+const int CHECK_TIMER = 80000000 * 5; // 5 seconds before checking the state of the device (80MHZ for 1 second)
+const short MIN_TARGET_TEMP = 5; // Minimum target temperature
+const short MAX_TARGET_TEMP = 40; // Maximum target temperature
+
+unsigned long timerCount; // Incremented every time the timer triggers
+unsigned int checkTempFlag; // Used for reading a new temperature reading
 short increaseTempFlag = 0; // Increase temperature flag
 short decreaseTempFlag = 0; // Decrease temperature flag
 short temp; // Current temperature
 short avg_temp_reading; // Avg temp reading
 short target = 30; // Target temperature
 short currentMode = 0; // Current mode, 0 = "Turned OFF", 1 = "Cooling" and 2 = "Heating"
-short temp_readings[3] = {0, 0, 0};
-
-void getTemperature(void) {
-	ADC0_PSSI_R |= (1 << 3);           /* start a conversion sequence 3 */
-	while((ADC0_RIS_R & 0x08) == 0); /* wait for conversion to complete */
-	temp = ((ADC0_SSFIFO3_R * 330) / 4096);
-	ADC0_ISC_R |= (1 << 3);             /* clear completion flag  */
-}
+short temp_readings[3] = {0, 0, 0}; // Used for storing the previous 3 temperature readings to calculate the average later
 
 int main(void){
-	
   TExaS_Init(SSI0_Real_Nokia5110_Scope);  // set system clock to 80 MHz
 	UART_Init(); 
 	PortB_Init();
 	PortE_Init();
+	ADC_Init();
 	Nokia5110_Init();
 	Nokia5110_ClearBuffer();
 	Nokia5110_DisplayBuffer();
@@ -87,23 +84,21 @@ int main(void){
 	
 	Nokia5110_Clear();
 	
-	getTemperature();
-	temp_readings[0] = temp;
-	temp_readings[1] = temp;
-	temp_readings[2] = temp;
-	calcAvgTemp();
-	
-	updateDisplay();
+	initializeTemperature();
 	
   while(1){
 		if (increaseTempFlag == 1) {
 			increaseTempFlag = 0;
-			target++;
-			updateDisplay();
+			if (MAX_TARGET_TEMP > target) {
+				target++;
+				updateDisplay();
+			}
 		} else if (decreaseTempFlag == 1) {
 			decreaseTempFlag = 0;
-			target--;
-			updateDisplay();
+			if (MIN_TARGET_TEMP < target) {
+				target--;
+				updateDisplay();
+			}
 		}
 		
 		if (checkTempFlag) {
@@ -130,30 +125,55 @@ int main(void){
 				updateDisplay();
 				OutCRLF();
 			}
-			UART_OutString("the average ambient temperature : ");
+			UART_OutString("The average ambient temperature: ");
 			UART_OutUDec(avg_temp_reading);  
 			OutCRLF();
-			UART_OutString("the target temperature : ");
+			UART_OutString("The target temperature: ");
 			UART_OutUDec(target);		
 			OutCRLF();
 		}
   }
+}
 
+void getTemperature(void) {
+	ADC0_PSSI_R |= (1 << 3);           				/* Start sampling and convert the analog input connected to the channel for SS3 */
+	while((ADC0_RIS_R & 0x08) == 0); 					/* Wait for sampling to be complete */
+	temp = ((ADC0_SSFIFO3_R * 330) / 4096); 	/* Converts ADC value into a scaled temperature value based on reference voltage and 12-bit ADC  */
+	ADC0_ISC_R |= (1 << 3);             			/* Clears the interrupt on SS3 */
+}
+
+void initializeTemperature(void) {
+	getTemperature();													/* Read the initial temperature */
+	temp_readings[0] = temp;									/* Add the initial temperature to the first spot */
+	temp_readings[1] = temp;									/* Add the initial temperature to the second spot */
+	temp_readings[2] = temp;									/* Add the initial temperature to the third spot */
+	calcAvgTemp();														/* Calculate the initial average temperature */
+
+	updateDisplay();													/* Update Nokia 5110 to display the new mode */
+}
+
+void updateTempReadings(void) {
+	temp_readings[timerCount % 3] = temp;			/* Add the new temperature reading to the right spot every timer period */
+	calcAvgTemp();														/* Calcualte the new average temperature based on the new temperature reading */
+}
+
+void calcAvgTemp(void) {
+	avg_temp_reading = (temp_readings[0] + temp_readings[1] + temp_readings[2]) / 3; /* Calculate the average temperature of the previous three temperature readings */
 }
 
 void updateDisplay(void) {
-	char buffer[10];
-	char *str = " C";
+	char buffer[10];													/* Used for concatenating string with integer */
+	char *str = " C";													
 	
 	Nokia5110_Clear();
 	Nokia5110_SetCursor(0, 0);
   Nokia5110_OutString("Target temp: ");
 	Nokia5110_SetCursor(3, 2);
 	
-	sprintf(buffer, "%d%s", target, str);
+	sprintf(buffer, "%d%s", target, str);			/* Concatenate the target temperature with celsius character */
 	Nokia5110_OutString(buffer);
 	Nokia5110_SetCursor(2, 4);
-	if (currentMode == 0) {
+	if (currentMode == 0) {										/* Display the current mode on the Nokia 5110 screen */
 		Nokia5110_OutString("Turned OFF");
 	} else if (currentMode == 1) {
 		Nokia5110_OutString("Cooling");
@@ -161,10 +181,12 @@ void updateDisplay(void) {
 		Nokia5110_OutString("Heating");
 	}
 }
+
 void OutCRLF(void){
   UART_OutChar(CR);
   UART_OutChar(LF);
 }
+
 void GPIOPortB_Handler(void) {
 	if(GPIO_PORTB_RIS_R&(1 << 4)) {
 		GPIO_PORTB_ICR_R |=(1 << 4); //acknolagement interrupt in port B for pin 4
@@ -174,14 +196,7 @@ void GPIOPortB_Handler(void) {
 		decreaseTempFlag = 1;
 	}
 }
-void updateTempReadings(void) {
-	temp_readings[timerCount % 3] = temp;
-	calcAvgTemp();
-}
 
-void calcAvgTemp(void) {
-	avg_temp_reading = (temp_readings[0] + temp_readings[1] + temp_readings[2]) / 3;
-}
 void Timer2_Init(unsigned long period){ 
   unsigned long volatile delay;
   SYSCTL_RCGCTIMER_R |= 0x04;   // 0) activate timer2
@@ -226,12 +241,17 @@ void PortE_Init(void) {
 	GPIO_PORTE_AFSEL_R |= (1 << 3);        /* enable alternate function */
 	GPIO_PORTE_DEN_R &= ~(1 << 3);         /* disable digital function */
 	GPIO_PORTE_AMSEL_R |= (1 << 3);        /* enable analog function */
+
+}
+
+void ADC_Init(void) {
 	ADC0_ACTSS_R &= ~(1 << 3);             /* disable SS3 during configuration */
 	ADC0_EMUX_R &= ~0xF000;         /* software trigger conversion */
 	ADC0_SSMUX3_R = 0;              /* get input from channel 0, AIN0 (PE3) */
 	ADC0_SSCTL3_R |= (1 << 1 | 1 << 2);             /* end bit must be set and enable interrupt for simple sequencer 3 */
 	ADC0_ACTSS_R |= (1 << 3);              /* enable ADC0 sequencer 3 */
 }
+
 void Timer2A_Handler(void){ 
   TIMER2_ICR_R |= (1 << 0);   // acknowledge timer2A timeout
   timerCount++;
