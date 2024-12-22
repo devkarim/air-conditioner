@@ -1,27 +1,71 @@
-// Red SparkFun Nokia 5110 (LCD-10168)
-// -----------------------------------
-// Signal        (Nokia 5110) LaunchPad pin
-// 3.3V          (VCC, pin 1) power
-// Ground        (GND, pin 2) ground
-// SSI0Fss       (SCE, pin 3) connected to PA3
-// Reset         (RST, pin 4) connected to PA7
-// Data/Command  (D/C, pin 5) connected to PA6
-// SSI0Tx        (DN,  pin 6) connected to PA5
-// SSI0Clk       (SCLK, pin 7) connected to PA2
-// back light    (LED, pin 8) not connected, consists of 4 white LEDs which draw ~80mA total
+// Air Conditioner Project
 
-#include "./tm4c123gh6pm.h"
+// December 22, 2024
+/* 
+	The provided code implements a basic temperature control system using the TM4C123GH6PM microcontroller. 
+	The system reads the ambient temperature, allows the user to set a target temperature, and controls heating or cooling devices to maintain the desired temperature. 
+	It also displays the current status on a Nokia5110 LCD and communicates over UART.
+
+	Team Members:
+		1. Fady Youssef
+		2. Abdelrahman Osman
+		3. Karim Wael
+	
+	University: Benha University
+	College: Shoubra Faculty of Engineering
+	Department: Computer Engineering
+ */
+ 
+// ******* Required Hardware I/O connections*******************
+// Resistor between LEDs and the microcontroller pins.
+// Increase Temperature Switch on PB4, and GND
+// Decrease Temperature Switch on PB5, and GND
+// Red LED on PB3, and GND
+// Blue LED on PB2, and GND
+// LM35 Sensor on PE3, GND, and VCC
+
+// Blue Nokia 5110
+// ---------------
+// Signal        (Nokia 5110) LaunchPad pin
+// Reset         (RST, pin 1) connected to PA7
+// SSI0Fss       (CE,  pin 2) connected to PA3
+// Data/Command  (DC,  pin 3) connected to PA6
+// SSI0Tx        (Din, pin 4) connected to PA5
+// SSI0Clk       (Clk, pin 5) connected to PA2
+// 3.3V          (Vcc, pin 6) power
+// back light    (BL,  pin 7) not connected, consists of 4 white LEDs which draw ~80mA total
+// Ground        (Gnd, pin 8) ground
+
+#include <stdio.h>
+#include "tm4c123gh6pm.h"
 #include "Nokia5110.h"
 #include "Random.h"
 #include "TExaS.h"
+#include "UART.c"
 
 void DisableInterrupts(void); // Disable interrupts
+void WaitForInterrupt(void);   
 void EnableInterrupts(void);  // Enable interrupts
-void Timer2_Init(unsigned long period);
-void Delay100ms(unsigned long count); // time delay in 0.1 seconds
-unsigned long TimerCount;
-unsigned long Semaphore;
+void Timer2_Init(unsigned long period); //Initialization of timer
+void PortB_Init(void);	//Initialization of Port B
+void PortE_Init(void); //Initialization of Port E
+void getTemperature(void);
+void OutCRLF(void);
+void updateDisplay(void);
+void calcAvgTemp(void);
+void updateTempReadings(void);
 
+unsigned long timerCount;
+unsigned int checkTempFlag;
+const short THRESHOLD_TEMP = 1;
+const int CHECK_TIMER = 80000000 * 5; //5 seconds before checking the state of the device(80MHZ for 1 second)
+short increaseTempFlag = 0; // Increase temperature flag
+short decreaseTempFlag = 0; // Decrease temperature flag
+short temp; // Current temperature
+short avg_temp_reading; // Avg temp reading
+short target = 30; // Target temperature
+short currentMode = 0; // Current mode, 0 = "Turned OFF", 1 = "Cooling" and 2 = "Heating"
+short temp_readings[3] = {0, 0, 0};
 
 int main(void){
   TExaS_Init(SSI0_Real_Nokia5110_Scope);  // set system clock to 80 MHz
