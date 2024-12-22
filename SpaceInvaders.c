@@ -41,7 +41,6 @@
 #include "Nokia5110.h"
 #include "Random.h"
 #include "TExaS.h"
-#include "UART.c"
 
 void DisableInterrupts(void); // Disable interrupts
 void WaitForInterrupt(void);   
