@@ -4,6 +4,13 @@
 
 An air conditioning system built using the TM4C123GH6PM microcontroller. The project simulates an air conditioner with heating and cooling modes based on the ambient temperature compared to a target temperature.
 
+University: Benha University
+College: Shoubra Faculty of Engineering
+Department: Computer Engineering
+Instructor: Mahmoud Nawar
+
+You can check the demo video from [here](https://www.youtube.com/watch?v=N25PDt8RJDY).
+
 ## Features
 
 1. Temperature Sensor: Reads ambient temperature using the LM35 sensor (analog input).
