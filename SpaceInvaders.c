@@ -250,7 +250,6 @@ void PortE_Init(void) {
 	GPIO_PORTE_AFSEL_R |= (1 << 3);        /* enable alternate function */
 	GPIO_PORTE_DEN_R &= ~(1 << 3);         /* disable digital function */
 	GPIO_PORTE_AMSEL_R |= (1 << 3);        /* enable analog function */
-
 }
 
 void ADC_Init(void) {
@@ -264,7 +263,7 @@ void ADC_Init(void) {
 void Timer2A_Handler(void){ 
   TIMER2_ICR_R |= (1 << 0);   // acknowledge timer2A timeout
   timerCount++;
-	if (timerCount % 5 == 0) {
+	if (timerCount % CHECK_TIMER == 0) {
 		checkTimerCount++;
 		checkTempFlag = 1;
 	}
