@@ -39,7 +39,7 @@
 #include <stdio.h>
 #include "tm4c123gh6pm.h"
 #include "Nokia5110.h"
-#include "Random.h"
+//#include "Random.h"
 #include "TExaS.h"
 #include "UART.c"
 
@@ -57,11 +57,14 @@ void calcAvgTemp(void); // Calculate the average temperature
 void updateTempReadings(void); // Add latest temperature reading to temperature readings array
 
 const short THRESHOLD_TEMP = 1; // Used for checking if target temperature is within -threshold and +threshold
-const int CHECK_TIMER = 80000000 * 5; // 5 seconds before checking the state of the device (80MHZ for 1 second)
+const int TIMER_PERIOD = 80000000; // One second
+const int CHECK_TIMER = 5; // 5 seconds before checking the state of the device (80MHZ for 1 second)
 const short MIN_TARGET_TEMP = 5; // Minimum target temperature
 const short MAX_TARGET_TEMP = 40; // Maximum target temperature
 
 unsigned long timerCount; // Incremented every time the timer triggers
+unsigned long checkTimerCount;
+unsigned long lastPressTimer = 0;
 unsigned int checkTempFlag; // Used for reading a new temperature reading
 short increaseTempFlag = 0; // Increase temperature flag
 short decreaseTempFlag = 0; // Decrease temperature flag
@@ -80,7 +83,7 @@ int main(void){
 	Nokia5110_Init();
 	Nokia5110_ClearBuffer();
 	Nokia5110_DisplayBuffer();
-	Timer2_Init(CHECK_TIMER);
+	Timer2_Init(TIMER_PERIOD);
 	
 	Nokia5110_Clear();
 	
@@ -137,7 +140,7 @@ int main(void){
 
 void getTemperature(void) {
 	ADC0_PSSI_R |= (1 << 3);           				/* Start sampling and convert the analog input connected to the channel for SS3 */
-	while((ADC0_RIS_R & 0x08) == 0); 					/* Wait for sampling to be complete */
+	while((ADC0_RIS_R & (1 << 3)) == 0); 			/* Wait for sampling to be complete */
 	temp = ((ADC0_SSFIFO3_R * 330) / 4096); 	/* Converts ADC value into a scaled temperature value based on reference voltage and 12-bit ADC  */
 	ADC0_ISC_R |= (1 << 3);             			/* Clears the interrupt on SS3 */
 }
@@ -153,7 +156,7 @@ void initializeTemperature(void) {
 }
 
 void updateTempReadings(void) {
-	temp_readings[timerCount % 3] = temp;			/* Add the new temperature reading to the right spot every timer period */
+	temp_readings[checkTimerCount % 3] = temp;			/* Add the new temperature reading to the right spot every timer period */
 	calcAvgTemp();														/* Calcualte the new average temperature based on the new temperature reading */
 }
 
@@ -190,10 +193,16 @@ void OutCRLF(void){
 void GPIOPortB_Handler(void) {
 	if(GPIO_PORTB_RIS_R&(1 << 4)) {
 		GPIO_PORTB_ICR_R |=(1 << 4); //acknolagement interrupt in port B for pin 4
-		increaseTempFlag = 1;
+		if (timerCount - lastPressTimer > 0) {
+			lastPressTimer = timerCount;
+			increaseTempFlag = 1;
+		}
 	} else if(GPIO_PORTB_RIS_R & (1 << 5)) {
 		GPIO_PORTB_ICR_R |= (1 << 5); //acknolagement interrupt in port B for pin 5
-		decreaseTempFlag = 1;
+		if (timerCount - lastPressTimer > 0) {
+			lastPressTimer = timerCount;
+			decreaseTempFlag = 1;
+		}
 	}
 }
 
@@ -203,15 +212,15 @@ void Timer2_Init(unsigned long period){
   delay = SYSCTL_RCGCTIMER_R;
   timerCount = 0;
   checkTempFlag = 0;
+	checkTimerCount = 0;
   TIMER2_CTL_R = 0x00000000;    // 1) disable timer2A during setup
   TIMER2_CFG_R = 0x00000000;    // 2) configure for 32-bit mode
-  TIMER2_TAMR_R |= (1 << 1);   // 3) configure for periodic mode, default down-count settings
+  TIMER2_TAMR_R = 0x2;   // 3) configure for periodic mode, default down-count settings
   TIMER2_TAILR_R = period-1;    // 4) reload value
-  TIMER2_TAPR_R = 0;            // 5) bus clock resolution
-  TIMER2_ICR_R |= (1 << 0);    // 6) clear timer2A timeout flag
-  TIMER2_IMR_R |= (1 << 0);    // 7) arm timeout interrupt
-  NVIC_EN0_R |= 1 << 23;           // 8) vector number 39, enable IRQ 23 in NVIC
-  TIMER2_CTL_R |= (1 << 0);    // 9) enable timer2A
+  TIMER2_ICR_R |= (1 << 0);    // 5) clear timer2A timeout flag
+  TIMER2_IMR_R |= (1 << 0);    // 6) arm timeout interrupt
+  NVIC_EN0_R |= 1 << 23;           // 7) vector number 39, enable IRQ 23 in NVIC
+  TIMER2_CTL_R |= (1 << 0);    // 8) enable timer2A
 }
 
 void PortB_Init(void) {
@@ -255,5 +264,8 @@ void ADC_Init(void) {
 void Timer2A_Handler(void){ 
   TIMER2_ICR_R |= (1 << 0);   // acknowledge timer2A timeout
   timerCount++;
-  checkTempFlag = 1;
+	if (timerCount % 5 == 0) {
+		checkTimerCount++;
+		checkTempFlag = 1;
+	}
 }
